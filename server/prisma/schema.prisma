@@ -1,0 +1,265 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  TEAM_LEADER
+  ENGINEER
+  TECHNICIAN
+  VIEWER
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
+
+model User {
+  id             String   @id @default(uuid())
+  employeeId     String   @unique
+  name           String
+  email          String   @unique
+  passwordHash   String
+  mobile         String?
+  role           Role     @default(VIEWER)
+  shift          String?
+  status         Status   @default(ACTIVE)
+  profilePicture String?
+  refreshToken   String?
+  
+  teamId         String?
+  team           Team?    @relation("TeamMembers", fields: [teamId], references: [id])
+  ledTeam        Team?    @relation("TeamLeader")
+  
+  // Phase 3 Relations
+  handoversSubmitted    ShiftHandover[] @relation("HandoverEngineer")
+  handoversAcknowledged ShiftHandover[] @relation("HandoverAcknowledger")
+  issuesCreated         Issue[]         @relation("CreatedIssues")
+  issuesAssigned        Issue[]         @relation("AssignedIssues")
+  transfersInitiated    IssueHistory[]  @relation("TransferredBy")
+  
+  // Phase 4 Relations
+  tasksCreated          Task[]          @relation("CreatedTasks")
+  tasksAssigned         Task[]          @relation("AssignedTasks")
+
+  // Phase 5 Relations
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  status      Status   @default(ACTIVE)
+  
+  leaderId    String?  @unique
+  leader      User?    @relation("TeamLeader", fields: [leaderId], references: [id])
+  
+  members     User[]   @relation("TeamMembers")
+  
+  // Phase 3 Relations
+  shiftHandovers ShiftHandover[]
+  issues         Issue[]
+  transferredTo  IssueHistory[] @relation("TransferredTo")
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ShiftHandover {
+  id              String   @id @default(uuid())
+  shift           String
+  date            DateTime @default(now())
+  
+  teamId          String
+  team            Team     @relation(fields: [teamId], references: [id])
+  
+  engineerId      String
+  engineer        User     @relation("HandoverEngineer", fields: [engineerId], references: [id])
+  
+  summary         String
+  pendingWork     String?
+  openIssues      String?
+  machineRemarks  String?
+  generalRemarks  String?
+  
+  acknowledgedBy  String?
+  acknowledger    User?    @relation("HandoverAcknowledger", fields: [acknowledgedBy], references: [id])
+  acknowledgedAt  DateTime?
+  
+  attachments     String[] 
+
+  createdAt       DateTime @default(now())
+}
+
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  TRANSFERRED
+  RESOLVED
+  CLOSED
+}
+
+model Issue {
+  id                String   @id @default(uuid())
+  issueNumber       String   @unique 
+  title             String
+  description       String
+  
+  teamId            String
+  team              Team     @relation(fields: [teamId], references: [id])
+  
+  machine           String   
+  productionLine    String
+  
+  priority          IssuePriority @default(MEDIUM)
+  status            IssueStatus   @default(OPEN)
+  
+  assignedToId      String?
+  assignedTo        User?    @relation("AssignedIssues", fields: [assignedToId], references: [id])
+  
+  createdById       String
+  createdBy         User     @relation("CreatedIssues", fields: [createdById], references: [id])
+  
+  dueDate           DateTime?
+  rootCause         String?
+  correctiveAction  String?
+  preventiveAction  String?
+  comments          String?
+  attachments       String[]
+  
+  history           IssueHistory[]
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model IssueHistory {
+  id              String   @id @default(uuid())
+  issueId         String
+  issue           Issue    @relation(fields: [issueId], references: [id])
+  
+  transferredById String?
+  transferredBy   User?    @relation("TransferredBy", fields: [transferredById], references: [id])
+  
+  transferredToId String?
+  transferredTo   Team?    @relation("TransferredTo", fields: [transferredToId], references: [id])
+  
+  reason          String?
+  comments        String?
+  
+  createdAt       DateTime @default(now())
+}
+
+// Phase 4 Models
+enum MachineStatus {
+  ONLINE
+  OFFLINE
+  UNDER_MAINTENANCE
+  DECOMMISSIONED
+}
+
+model Machine {
+  id               String   @id @default(uuid())
+  machineName      String
+  machineCode      String   @unique
+  productionLine   String
+  vendor           String?
+  model            String?
+  serialNumber     String?  @unique
+  softwareVersion  String?
+  installationDate DateTime?
+  qrCodeUrl        String?  
+  status           MachineStatus @default(ONLINE)
+  
+  documents        String[]
+  images           String[]
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  COMPLETED
+}
+
+model Task {
+  id               String   @id @default(uuid())
+  taskName         String
+  description      String?
+  
+  assignedToId     String?
+  assignedTo       User?    @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  
+  createdById      String
+  createdBy        User     @relation("CreatedTasks", fields: [createdById], references: [id])
+  
+  priority         TaskPriority @default(MEDIUM)
+  dueDate          DateTime?
+  status           TaskStatus   @default(TODO)
+  
+  checklist        Json?    
+  comments         String?
+  attachments      String[]
+  
+  isRecurring      Boolean  @default(false)
+  recurringPattern String?  
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// Phase 5 Models
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  title       String
+  message     String
+  isRead      Boolean  @default(false)
+  link        String?  
+  
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String   
+  entity      String   
+  entityId    String
+  oldValue    Json?
+  newValue    Json?
+  ipAddress   String?
+  browser     String?
+  
+  createdAt   DateTime @default(now())
+}
